@@ -32,28 +32,11 @@ type TracertHop struct {
 	RTT     time.Duration
 }
 
-type LastSuccess struct {
-	RouterIP string
-	Count    int
-}
-
-type FailedPair struct {
-	LocalAddr  string
-	RemoteAddr string
-}
-
-type TraceResult struct {
-	LastSuccess []LastSuccess
-	FailedPair  []FailedPair
-	Failed      int
-	Success     int
-}
-
 type TraceRoute struct {
-	config           *Config
-	srcIP, dstIP     string
-	srcPort, dstPort int
-	data             []byte
+	config                *Config
+	localIP, remoteIP     string
+	localPort, remotePort int
+	data                  []byte
 
 	pConn *icmp.PacketConn
 
@@ -61,7 +44,7 @@ type TraceRoute struct {
 	sentData     map[string]bool
 }
 
-func New(srcIP, dstIP string, srcPort, dstPort int, data []byte, config *Config) *TraceRoute {
+func New(localIP, remoteIP string, localPort, remotePort int, data []byte, config *Config) *TraceRoute {
 	if config == nil {
 		config = &DefaultConfig
 	}
@@ -71,13 +54,13 @@ func New(srcIP, dstIP string, srcPort, dstPort int, data []byte, config *Config)
 	}
 
 	return &TraceRoute{
-		srcIP:    srcIP,
-		dstIP:    dstIP,
-		srcPort:  srcPort,
-		dstPort:  dstPort,
-		data:     data,
-		config:   config,
-		sentData: make(map[string]bool),
+		localIP:    localIP,
+		remoteIP:   remoteIP,
+		localPort:  localPort,
+		remotePort: remotePort,
+		data:       data,
+		config:     config,
+		sentData:   make(map[string]bool),
 	}
 }
 
@@ -86,7 +69,7 @@ func (tr *TraceRoute) Trace(ctx context.Context) ([]*TracertHop, error) {
 
 	go tr.handleReplies(routers)
 
-	conn, err := net.ListenPacket("ip4:udp", tr.srcIP)
+	conn, err := net.ListenPacket("ip4:udp", tr.localIP)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +79,8 @@ func (tr *TraceRoute) Trace(ctx context.Context) ([]*TracertHop, error) {
 	cc.SetReadBuffer(20 * 1024 * 1024)
 	cc.SetWriteBuffer(20 * 1024 * 1024)
 
-	localIP := net.ParseIP(tr.srcIP)
-	remoteIP := net.ParseIP(tr.dstIP)
+	localIP := net.ParseIP(tr.localIP)
+	remoteIP := net.ParseIP(tr.remoteIP)
 	dstAddr := &net.IPAddr{IP: remoteIP}
 
 	pkt := ipv4.NewPacketConn(conn)
@@ -107,7 +90,7 @@ loop:
 	for i := 1; i <= tr.config.MaxTTL; i++ {
 		pkt.SetTTL(i)
 
-		buffer, _ := encodeUDPPacket(localIP, remoteIP, uint16(tr.srcPort), uint16(tr.dstPort), 64, tr.data)
+		buffer, _ := encodeUDPPacket(localIP, remoteIP, uint16(tr.localPort), uint16(tr.remotePort), 64, tr.data)
 		tr.sentDataLock.Lock()
 		tr.sentData[string(buffer[:8])] = true
 		tr.sentDataLock.Unlock()
@@ -145,7 +128,7 @@ loop:
 		}
 		results = append(results, hop)
 
-		if router == tr.dstIP {
+		if router == tr.remoteIP {
 			break loop
 		}
 	}
@@ -157,7 +140,7 @@ loop:
 	return results, nil
 }
 
-func findLastSuccess(dstIP string, hops []*TracertHop) string {
+func findLastSuccess(remoteIP string, hops []*TracertHop) string {
 	if len(hops) == 0 {
 		return ""
 	}
@@ -165,7 +148,7 @@ func findLastSuccess(dstIP string, hops []*TracertHop) string {
 	last := len(hops) - 1
 
 	for i := last; i >= 0; i-- {
-		if hops[i].Success && hops[i].Address == dstIP {
+		if hops[i].Success && hops[i].Address == remoteIP {
 			return hops[i].Address
 		}
 		if !hops[i].Success {
@@ -215,7 +198,7 @@ func (tr *TraceRoute) handleReplies(routers chan string) {
 					continue
 				}
 
-				if header.Src.String() != tr.srcIP || header.Dst.String() != tr.dstIP {
+				if header.Src.String() != tr.localIP || header.Dst.String() != tr.remoteIP {
 					continue
 				}
 				tr.sentDataLock.Lock()
@@ -235,7 +218,7 @@ func (tr *TraceRoute) handleReplies(routers chan string) {
 				continue
 			}
 
-			if header.Src.String() != tr.srcIP || header.Dst.String() != tr.dstIP {
+			if header.Src.String() != tr.localIP || header.Dst.String() != tr.remoteIP {
 				continue
 			}
 			tr.sentDataLock.Lock()
