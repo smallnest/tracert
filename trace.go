@@ -16,14 +16,16 @@ import (
 )
 
 type Config struct {
-	MaxTTL  int
-	TOS     int
-	Timeout time.Duration
+	MaxTTL   int
+	TOS      int
+	Timeout  time.Duration
+	Parallel int
 }
 
 var DefaultConfig = Config{
-	MaxTTL:  30,
-	Timeout: 3 * time.Second,
+	MaxTTL:   30,
+	Timeout:  3 * time.Second,
+	Parallel: 1,
 }
 
 type TracertHop struct {
