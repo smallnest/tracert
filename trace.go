@@ -68,11 +68,9 @@ func New(localIP, remoteIP string, localPort, remotePort int, data []byte, confi
 func (tr *TraceRoute) Trace(ctx context.Context) ([]*TracertHop, error) {
 	routers := make(chan string)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go tr.handleReplies(wg, routers)
-	wg.Wait()
+	done := make(chan struct{})
+	go tr.handleReplies(done, routers)
+	<-done
 
 	conn, err := net.ListenPacket("ip4:udp", tr.localIP)
 	if err != nil {
@@ -166,9 +164,9 @@ func findLastSuccess(remoteIP string, hops []*TracertHop) string {
 	return "*"
 }
 
-func (tr *TraceRoute) handleReplies(wg sync.WaitGroup, routers chan string) {
+func (tr *TraceRoute) handleReplies(done chan struct{}, routers chan string) {
 	c, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	wg.Done()
+	close(done)
 	if err != nil {
 		fmt.Println(err)
 		return
