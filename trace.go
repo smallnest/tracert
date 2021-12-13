@@ -5,7 +5,6 @@ import (
 
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -20,12 +19,14 @@ type Config struct {
 	TOS      int
 	Timeout  time.Duration
 	Parallel int
+	Delay    time.Duration
 }
 
 var DefaultConfig = Config{
 	MaxTTL:   30,
 	Timeout:  3 * time.Second,
 	Parallel: 1,
+	Delay:    time.Second,
 }
 
 type TracertHop struct {
@@ -70,9 +71,10 @@ func New(localIP, remoteIP string, localPort, remotePort int, data []byte, confi
 func (tr *TraceRoute) Trace(ctx context.Context) ([]*TracertHop, error) {
 	routers := make(chan string)
 
-	done := make(chan struct{})
-	go tr.handleReplies(done, routers)
-	<-done
+	go tr.handleReplies(routers)
+	if tr.config.Delay > 0 {
+		time.Sleep(tr.config.Delay)
+	}
 
 	conn, err := net.ListenPacket("ip4:udp", tr.localIP)
 	if err != nil {
@@ -166,11 +168,9 @@ func findLastSuccess(remoteIP string, hops []*TracertHop) string {
 	return "*"
 }
 
-func (tr *TraceRoute) handleReplies(done chan struct{}, routers chan string) {
+func (tr *TraceRoute) handleReplies(routers chan string) {
 	c, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	close(done)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 	tr.pConn = c
