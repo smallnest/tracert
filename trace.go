@@ -5,6 +5,7 @@ import (
 
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -167,12 +168,12 @@ func findLastSuccess(remoteIP string, hops []*TracertHop) string {
 
 func (tr *TraceRoute) handleReplies(wg sync.WaitGroup, routers chan string) {
 	c, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	wg.Done()
 	if err != nil {
+		fmt.Println(err)
 		return
 	}
 	tr.pConn = c
-
-	wg.Done()
 
 	for {
 		c.SetReadDeadline(time.Now().Add(tr.config.Timeout))
